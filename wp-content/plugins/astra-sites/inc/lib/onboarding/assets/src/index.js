@@ -1,58 +1,16 @@
 import React from 'react';
-import { __ } from '@wordpress/i18n';
-import { decodeEntities } from '@wordpress/html-entities';
-import { useStateValue } from '../../store/store';
-import './style.scss';
-import ICONS from '../../../icons';
-import { sendPostMessage } from '../../utils/functions';
-import { XMarkIcon } from '@heroicons/react/24/outline';
+import { createRoot } from 'react-dom';
+import reducer, { initialState } from './store/reducer';
+import { StateProvider } from './store/store';
+import App from './app';
+import { Toaster } from 'react-hot-toast';
 
-const ChangeTemplate = () => {
-	const [
-		{
-			selectedTemplateName,
-			currentIndex,
-			licenseStatus,
-			selectedTemplateType,
-		},
-		dispatch,
-	] = useStateValue();
-
-	const goToShowcase = () => {
-		sendPostMessage( {
-			param: 'clearPreviewAssets',
-			data: {},
-		} );
-
-		setTimeout( () => {
-			dispatch( {
-				type: 'set',
-				currentIndex: currentIndex - 1,
-				currentCustomizeIndex: 0,
-			} );
-		}, 300 );
-	};
-	return (
-		<div className="change-template-wrap w-full">
-			<div className="template-name">
-				<p className="label">
-					{ __( 'Selected Template:', 'astra-sites' ) }
-				</p>
-				<div className="flex gap-2 items-center">
-					<h5>{ decodeEntities( selectedTemplateName ) }</h5>
-					{ ! licenseStatus && 'free' !== selectedTemplateType && (
-						<span>
-							{ selectedTemplateType === 'signature'
-								? ICONS.signatureIcon
-								: ICONS.premiumIcon }
-						</span>
-					) }
-				</div>
-			</div>
-			<div className="change-btn-wrap" onClick={ goToShowcase }>
-				<XMarkIcon className="w-6 h-6 text-zip-body-text" />
-			</div>
-		</div>
-	);
-};
-export default ChangeTemplate;
+const root = createRoot(
+	document.getElementById( 'starter-templates-ai-root' )
+);
+root.render(
+	<StateProvider reducer={ reducer } initialState={ initialState }>
+		<App />
+		<Toaster position="top-right" reverseOrder={ false } gutter={ 8 } />
+	</StateProvider>
+);

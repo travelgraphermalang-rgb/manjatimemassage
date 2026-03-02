@@ -1,33 +1,18 @@
-import { useEffect } from '@wordpress/element';
-import { __ } from '@wordpress/i18n';
+import BusinessLogo from './business-logo-ai';
+import BusinessLogoControls from './business-logo-ai/controls';
+import SiteColors from './site-colors-typography-ai';
+import SiteColorsControls from './site-colors-typography-ai/controls';
 
-const BusinessLogo = () => {
-	const [ {}, dispatch ] = [ {}, () => {} ]; // Remove this line.
-	useEffect( () => {
-		dispatch( {
-			type: 'set',
-			designStep: 1,
-		} );
-	}, [] );
-
-	return (
-		<>
-			{ /* <ChangeTemplate /> */ }
-			<div className="customizer-header">
-				<div className="header-name">
-					<h3 className="ist-customizer-heading">
-						{ __( 'Logo', 'ai-builder' ) }
-					</h3>
-					<p className="screen-description">
-						{ __(
-							`Choose a logo for your site. You can update it anytime later.`,
-							'ai-builder'
-						) }
-					</p>
-				</div>
-			</div>
-		</>
-	);
-};
-
-export default BusinessLogo;
+export const CustomizeAiSteps = [
+	{
+		content: BusinessLogo,
+		controls: BusinessLogoControls,
+		class: 'customize-business-logo',
+	},
+	{
+		content: SiteColors,
+		controls: SiteColorsControls,
+		actions: null,
+		class: 'customize-typography-colors',
+	},
+];

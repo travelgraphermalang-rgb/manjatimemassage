@@ -1,129 +1,283 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+// import { Tooltip } from '@brainstormforce/starter-templates-components';
+import Tooltip from '../components/tooltip/tooltip';
 import { __ } from '@wordpress/i18n';
-// import { useState } from '@wordpress/element';
-import { DefaultStep, PreviousStepLink } from '../../components/index';
-import { useStateValue } from '../../store/store';
-import ZipWPAuthorize from '../../components/zipwp-auth/index';
+import { useStateValue } from '../store/store';
+import ICONS from '../../icons';
+import Logo from '../components/logo';
+import { getStepIndex, storeCurrentState } from '../utils/functions';
+import { STEPS } from './util';
+const { adminUrl } = starterTemplates;
+const $ = jQuery;
 
-const { imageDir, isBeaverBuilderDisabled } = starterTemplates;
+const pageBuilders = [ 'gutenberg', 'elementor', 'beaver-builder' ];
 
-const PageBuilder = () => {
-	const [ { currentIndex }, dispatch ] = useStateValue();
-	// const [ builder, setBuilder ] = useState( 'ai' );
+const Steps = () => {
+	const [ stateValue, dispatch ] = useStateValue();
+	const {
+		builder,
+		searchTerms,
+		searchTermsWithCount,
+		currentIndex,
+		currentCustomizeIndex,
+		templateResponse,
+		designStep,
+		importError,
+	} = stateValue;
+	const [ settingHistory, setSettinghistory ] = useState( true );
+	const [ settingIndex, setSettingIndex ] = useState( true );
+	const current = STEPS[ currentIndex ];
+	const history = useNavigate();
+
+	// Helper function to validate template data exists
+	const hasTemplateData = ( state ) => {
+		return (
+			state &&
+			( state.templateResponse ||
+				state.selectedTemplateID ||
+				state.templateResponse?.id ||
+				( state.selectedTemplateID !== undefined &&
+					state.selectedTemplateID !== '' ) )
+		);
+	};
 
 	useEffect( () => {
-		const startTime = localStorage.getItem( 'st-import-start' );
-		const endTime = localStorage.getItem( 'st-import-end' );
+		$( document ).on( 'heartbeat-send', sendHeartbeat );
+		$( document ).on( 'heartbeat-tick', heartbeatDone );
+	}, [ searchTerms, searchTermsWithCount ] );
 
-		if ( startTime || endTime ) {
-			localStorage.removeItem( 'st-import-start' );
-			localStorage.removeItem( 'st-import-end' );
+	const heartbeatDone = ( event, data ) => {
+		// Check for our data, and use it.
+		if ( ! data[ 'ast-sites-search-terms' ] ) {
+			return;
 		}
+		dispatch( {
+			type: 'set',
+			searchTerms: [],
+			searchTermsWithCount: [],
+		} );
+	};
+
+	const sendHeartbeat = ( event, data ) => {
+		// Add additional data to Heartbeat data.
+		if ( searchTerms.length > 0 ) {
+			data[ 'ast-sites-search-terms' ] = searchTermsWithCount;
+			data[ 'ast-sites-builder' ] = builder;
+		}
+	};
+
+	useEffect( () => {
+		const previousIndex = parseInt( currentIndex ) - 1;
+		const nextIndex = parseInt( currentIndex ) + 1;
+
+		if ( nextIndex > 0 && nextIndex < STEPS.length ) {
+			document.body.classList.remove( STEPS[ nextIndex ].class );
+		}
+
+		if ( previousIndex > 0 ) {
+			document.body.classList.remove( STEPS[ previousIndex ].class );
+		}
+
+		document.body.classList.add( STEPS[ currentIndex ].class );
 	} );
 
-	const update = ( builder ) => {
-		if ( builder !== 'ai' ) {
+	useEffect( () => {
+		if ( importError ) {
+			document.body.classList.add( 'st-error' );
+		} else {
+			document.body.classList.remove( 'st-error' );
+		}
+	}, [ importError ] );
+
+	useEffect( () => {
+		const currentUrlParams = new URLSearchParams( window.location.search );
+		const storedStateValue = JSON.parse(
+			localStorage.getItem( 'starter-templates-onboarding' )
+		);
+		const urlIndex = parseInt( currentUrlParams.get( 'ci' ) ) || 0;
+		const designIndex =
+			parseInt( currentUrlParams.get( 'designStep' ) ) || 0;
+		const searchTerm = currentUrlParams.get( 's' ) || '';
+
+		if ( urlIndex !== 0 ) {
+			const stateValueUpdates = {};
+			for ( const key in storedStateValue ) {
+				if ( key === 'currentIndex' || key === 'siteSearchTerm' ) {
+					continue;
+				}
+
+				if ( key === 'builder' ) {
+					continue;
+				}
+				stateValueUpdates[ key ] = storedStateValue[ `${ key }` ];
+			}
+
 			dispatch( {
 				type: 'set',
-				builder,
-				currentIndex: currentIndex + 1,
+				currentIndex: urlIndex,
+				designStep: designIndex,
+				siteSearchTerm: searchTerm,
+				...stateValueUpdates,
+			} );
+
+			// Validate template data exists when at CI index 3 or more
+			if ( urlIndex >= 3 ) {
+				if ( ! hasTemplateData( storedStateValue ) ) {
+					// Template data is missing, prevent user from proceeding beyond current index.
+					dispatch( {
+						type: 'set',
+						// Reset to a safe state where user can reselect template.
+						currentIndex: 2, // Go back to template selection step.
+					} );
+				}
+			}
+		} else {
+			localStorage.removeItem( 'starter-templates-onboarding' );
+		}
+
+		setSettinghistory( false );
+	}, [ history ] );
+
+	useEffect( () => {
+		const currentUrlParams = new URLSearchParams( window.location.search );
+		const urlIndex = parseInt( currentUrlParams.get( 'ci' ) ) || 0;
+		const builderValue = currentUrlParams.get( 'builder' ) || '';
+
+		if ( currentIndex === getStepIndex( 'page-builder' ) ) {
+			currentUrlParams.delete( 'ci' );
+			currentUrlParams.delete( 'ai' );
+			currentUrlParams.delete( 'builder' );
+			if ( builderValue && pageBuilders.includes( builderValue ) ) {
+				dispatch( {
+					type: 'set',
+					builder: builderValue,
+					currentIndex: 2,
+				} );
+			}
+			history(
+				window.location.pathname + '?' + currentUrlParams.toString()
+			);
+		}
+
+		if (
+			( currentIndex !== getStepIndex( 'page-builder' ) &&
+				urlIndex !== currentIndex ) ||
+			templateResponse !== null
+		) {
+			// Prevent navigation forward if at CI index 3+ and template data is missing.
+			if ( currentIndex >= 3 ) {
+				if ( ! hasTemplateData( stateValue ) ) {
+					// If template data is missing, don't allow forward navigation.
+					// Reset to a safe state.
+					dispatch( {
+						type: 'set',
+						currentIndex: 2, // Go back to template selection step.
+					} );
+					return; // Exit early to prevent state storage.
+				}
+			}
+			storeCurrentState( stateValue );
+			currentUrlParams.set( 'ci', currentIndex );
+			history(
+				window.location.pathname + '?' + currentUrlParams.toString()
+			);
+		}
+
+		// Execute only for the last Customization step.
+		if (
+			designStep !== 0 &&
+			urlIndex === STEPS.length - 1 &&
+			templateResponse !== null
+		) {
+			storeCurrentState( stateValue );
+			currentUrlParams.set( 'designStep', designStep );
+			history(
+				window.location.pathname + '?' + currentUrlParams.toString()
+			);
+		}
+
+		if ( currentIndex === getStepIndex( 'site-list' ) ) {
+			dispatch( {
+				type: 'set',
+				activePalette: {},
+				activePaletteSlug: 'default',
+				typography: {},
+				typographyIndex: 0,
+			} );
+		}
+
+		setSettingIndex( false );
+	}, [ currentIndex, templateResponse, designStep ] );
+
+	window.onpopstate = () => {
+		if (
+			!! designStep &&
+			designStep !== 1 &&
+			currentIndex !== getStepIndex( 'site-list' )
+		) {
+			if ( currentIndex >= getStepIndex( 'survey' ) ) {
+				dispatch( {
+					type: 'set',
+					currentIndex: currentIndex - 1,
+				} );
+			} else {
+				dispatch( {
+					type: 'set',
+					designStep: designStep - 1,
+					currentCustomizeIndex: currentCustomizeIndex - 1,
+					currentIndex,
+				} );
+			}
+		}
+		if ( currentIndex > getStepIndex( 'site-list' ) && designStep === 1 ) {
+			dispatch( {
+				type: 'set',
+				currentIndex: currentIndex - 1,
 			} );
 		}
 	};
 
-	const handleKeyPress = ( e, value ) => {
-		e = e || window.event;
-
-		if ( e.keyCode === 37 ) {
-			//Left Arrow
-			if ( e.target.previousSibling ) {
-				e.target.previousSibling.focus();
-			}
-		} else if ( e.keyCode === 39 ) {
-			//Right Arrow
-			if ( e.target.nextSibling ) {
-				e.target.nextSibling.focus();
-			}
-		} else if ( e.key === 'Enter' ) {
-			//Enter
-			update( value );
-		}
-	};
-
 	return (
-		<DefaultStep
-			content={
-				<div className="page-builder-screen-wrap middle-content">
-					<h1>{ __( 'Select Page Builder', 'astra-sites' ) }</h1>
-					<p className="screen-description">
-						{ __(
-							'Please choose your preferred page builder from the list below.',
-							'astra-sites'
-						) }
-					</p>
-					<div className="page-builder-wrap ist-fadeinUp">
-						<div
-							className="page-builder-item d-flex-center-align"
-							onClick={ () => {
-								update( 'ai' );
-							} }
-							tabIndex="0"
-							onKeyDown={ ( event ) =>
-								handleKeyPress( event, 'ai' )
-							}
-						>
-							<div className="elementor-image-wrap image-wrap">
-								<img
-									src={ `${ imageDir }block-editor.svg` }
-									alt={ __( 'Block Editor', 'astra-sites' ) }
-								/>
+		<div className={ `st-step ${ current.class }` }>
+			{ ! [ getStepIndex( 'customizer' ) ].includes( currentIndex ) && (
+				<div className="step-header">
+					{ current.header ? (
+						current.header
+					) : (
+						<div className="row">
+							<div className="col">
+								<Logo />
 							</div>
-							<h6>{ __( 'AI Site', 'astra-sites' ) }</h6>
-						</div>
-						{ ! isBeaverBuilderDisabled && (
-							<div
-								className="page-builder-item d-flex-center-align"
-								onClick={ () => {
-									update( 'legacy' );
-								} }
-								tabIndex="0"
-								onKeyDown={ ( event ) =>
-									handleKeyPress( event, 'legacy' )
-								}
-							>
-								<div className="beaver-builder-image-wrap image-wrap">
-									<img
-										src={ `${ imageDir }beaver-builder.svg` }
-										alt={ __(
-											'Beaver Builder',
-											'astra-sites'
-										) }
-									/>
+							<div className="right-col">
+								<div className="col exit-link">
+									<a href={ adminUrl }>
+										<Tooltip
+											content={ __(
+												'Exit to Dashboard',
+												'astra-sites'
+											) }
+										>
+											{ ICONS.remove }
+										</Tooltip>
+									</a>
 								</div>
-								<h6>{ __( 'Legacy', 'astra-sites' ) }</h6>
 							</div>
-						) }
-					</div>
-					<div className="zipwp-authorize-wrap">
-						{ <ZipWPAuthorize /> }
-					</div>
+						</div>
+					) }
+
+					<canvas
+						id="ist-bashcanvas"
+						width={ window.innerWidth }
+						height={ window.innerHeight }
+					/>
 				</div>
-			}
-			actions={
-				<>
-					<PreviousStepLink
-						before
-						customizeStep={ true }
-						onClick={ () => {
-							window.location.href = starterTemplates.adminUrl;
-						} }
-					>
-						{ __( 'Back', 'astra-sites' ) }
-					</PreviousStepLink>
-				</>
-			}
-		/>
+			) }
+			{ settingHistory === false && settingIndex === false && current
+				? current.content
+				: null }
+		</div>
 	);
 };
 
-export default PageBuilder;
+export default Steps;

@@ -1,258 +1,238 @@
-import React, { useState } from 'react';
-import { Tooltip } from '@brainstormforce/starter-templates-components';
+import { memo, useEffect, useState } from 'react';
 import { __ } from '@wordpress/i18n';
-import { Button, PreviousStepLink } from '../../../../../src/components';
-import ICONS from '../../../../../icons';
-import { useStateValue } from '../../../../../src/store/store';
+import { ArrowPathIcon } from '@heroicons/react/24/outline';
+import { FONTS } from './customize-steps/site-colors-typography/other-fonts';
+import { getFontName } from '../customize-site/customize-steps/site-colors-typography/font-selector';
+import { useStateValue } from '../../store/store';
 import {
-	saveTypography,
-	setColorPalettes,
-	setSiteLogo,
-} from '../../../../../src/steps/import-site/import-utils';
-import LoadingSpinner from '../../../../components/loading-spinner';
-import { removeLocalStorageItem } from '../../../../utils/functions';
+	getDefaultTypography,
+	getHeadingFonts,
+	sendPostMessage as dispatchPostMessage,
+	classNames,
+} from '../../utils/functions';
 
-const List = ( { className, options, onSelect, selected, type } ) => {
-	const handleKeyPress = ( e, id ) => {
-		e = e || window.event;
-
-		if ( e.keyCode === 37 ) {
-			//Left Arrow
-			if ( e.target.previousSibling ) {
-				e.target.previousSibling.focus();
-			}
-		} else if ( e.keyCode === 39 ) {
-			//Right Arrow
-			if ( e.target.nextSibling ) {
-				e.target.nextSibling.focus();
-			}
-		} else if ( e.key === 'Enter' ) {
-			//Enter
-			onSelect( e, id );
-		}
-	};
-
-	return (
-		<ul className={ `ist-font-selector ${ className }` }>
-			{ Object.keys( options ).map( ( index ) => {
-				const bodyFont =
-					getFontName( options[ index ][ 'body-font-family' ] ) || '';
-				const headingFont =
-					getFontName(
-						options[ index ][ 'headings-font-family' ],
-						bodyFont
-					) || '';
-				const bodyFontWeight = options[ index ][ 'body-font-weight' ];
-				const headingFontWeight =
-					options[ index ][ 'headings-font-weight' ];
-				const id = options[ index ].id;
-				return (
-					<Tooltip
-						content={
-							type === 'other'
-								? `${ headingFont } / ${ bodyFont }`
-								: null
-						}
-						key={ id }
-					>
-						<li
-							className={ `
-						ist-font
-						${ id === selected ? 'active' : '' }
-						` }
-							key={ id }
-							onClick={ ( event ) => {
-								onSelect( event, id );
-							} }
-							tabIndex="0"
-							role="presentation"
-							onKeyDown={ ( event ) => {
-								handleKeyPress( event, id );
-							} }
-						>
-							{
-								<>
-									{ type === 'default' && (
-										<>
-											<span
-												style={ {
-													fontFamily: headingFont,
-													fontWeight:
-														headingFontWeight,
-												} }
-												className="heading-font-preview"
-											>
-												{ headingFont }
-											</span>
-											<span className="font-separator">
-												/
-											</span>
-											<span
-												style={ {
-													fontFamily: bodyFont,
-													fontWeight: bodyFontWeight,
-												} }
-												className="body-font-preview"
-											>
-												{ bodyFont }
-											</span>
-										</>
-									) }
-									{ type === 'other' && (
-										<>
-											<span
-												style={ {
-													fontFamily: headingFont,
-													fontWeight:
-														headingFontWeight,
-												} }
-												className="heading-font-preview"
-											>
-												A
-											</span>
-											<span
-												style={ {
-													fontFamily: bodyFont,
-													fontWeight: bodyFontWeight,
-												} }
-												className="body-font-preview"
-											>
-												a
-											</span>
-										</>
-									) }
-								</>
-							}
-						</li>
-					</Tooltip>
-				);
-			} ) }
-		</ul>
+const FontSelector = () => {
+	const [ { typography: activeTypography, templateResponse }, dispatch ] =
+		useStateValue();
+	const [ fonts, setFonts ] = useState(
+		FONTS.map( ( font, index ) => ( { ...font, id: index } ) )
 	);
-};
-
-export const getFontName = ( fontName, inheritFont ) => {
-	if ( ! fontName ) {
-		return '';
-	}
-
-	if ( fontName ) {
-		const matches = fontName.match( /'([^']+)'/ );
-
-		if ( matches ) {
-			return matches[ 1 ];
-		} else if ( 'inherit' === fontName ) {
-			return inheritFont;
-		}
-
-		return fontName;
-	}
-
-	if ( inheritFont ) {
-		return inheritFont;
-	}
-};
-
-const FontSelector = ( { options, onSelect, selected } ) => {
-	const [
-		{
-			currentCustomizeIndex,
-			typographyIndex,
-			siteLogo,
-			activePalette,
-			typography,
-		},
-		dispatch,
-	] = useStateValue();
-
-	const [ isSaving, setIsSaving ] = useState( false );
-
-	const fonts = options.map( ( font, index ) => {
-		font.id = index;
-		return font;
-	} );
-	const defaultFonts = fonts.filter( ( font ) => font.default );
-	const otherFonts = fonts.filter( ( font ) => ! font.default );
+	const headingFonts = getHeadingFonts( templateResponse );
 
 	/**
-	 * 8. Update the website as per the customizations selected by the user.
-	 * The following steps are covered here.
-	 *      a. Update Logo
-	 *      b. Update Color Palette
-	 *      c. Update Typography
+	 * Add selected demo typography as default typography
 	 */
-	const customizeWebsite = async () => {
-		setIsSaving( true );
-		await setSiteLogo( siteLogo );
-		await setColorPalettes( JSON.stringify( activePalette ) );
-		await saveTypography( typography );
+	useEffect( () => {
+		const googleFontsURL = document.getElementById( 'google-fonts-url' );
 
-		removeLocalStorageItem( 'ai-onboarding-details' );
+		if ( templateResponse ) {
+			const defaultFonts = [];
+			const defaultTypography = getDefaultTypography( templateResponse );
+			defaultFonts.push( {
+				id: 'default-font',
+				...defaultTypography,
+			} );
 
-		localStorage.removeItem( 'starter-templates-iframe-preview-data' );
+			if ( ! document.getElementById( 'google-fonts-domain' ) ) {
+				const node = document.createElement( 'link' );
+				node.id = 'google-fonts-domain';
+				node.setAttribute( 'rel', 'preconnect' );
+				node.setAttribute( 'href', 'https://fonts.gstatic.com' );
+				document.head.appendChild( node );
+			}
 
-		window.location.href = astraSitesVars?.siteURL;
+			// Removes existing Google fonts URL.
+			if ( !! googleFontsURL ) {
+				googleFontsURL.remove();
+			}
+
+			const node = document.createElement( 'link' );
+			node.id = 'google-fonts-url';
+			node.setAttribute( 'rel', 'stylesheet' );
+
+			const fontsName = [];
+
+			let bodyFont = defaultTypography[ 'body-font-family' ] || '';
+			let bodyFontWeight =
+				parseInt( defaultTypography[ 'body-font-weight' ] ) || '';
+			if ( bodyFontWeight ) {
+				bodyFontWeight = `:wght@${ bodyFontWeight }`;
+			}
+
+			if ( bodyFont ) {
+				bodyFont = getFontName( bodyFont );
+				bodyFont =
+					undefined !== bodyFont
+						? bodyFont.replace( ' ', '+' )
+						: bodyFont;
+				fontsName.push( `family=${ bodyFont }${ bodyFontWeight }` );
+			}
+
+			let headingFont = defaultTypography[ 'headings-font-family' ] || '';
+			let headingFontWeight =
+				parseInt( defaultTypography[ 'headings-font-weight' ] ) || '';
+
+			if ( headingFontWeight ) {
+				headingFontWeight = `:wght@${ headingFontWeight }`;
+			}
+
+			if ( headingFont ) {
+				headingFont = getFontName( headingFont, bodyFont );
+				headingFont =
+					undefined !== headingFont
+						? headingFont.replace( ' ', '+' )
+						: headingFont;
+				fontsName.push(
+					`family=${ headingFont }${ headingFontWeight }`
+				);
+			}
+
+			let otherFontsString = '';
+			if ( !! fonts ) {
+				for ( const font of fonts ) {
+					const fontHeading = getFontName(
+						font[ 'headings-font-family' ]
+					).replaceAll( ' ', '+' );
+					const fontHeadingWeight = font[ 'headings-font-weight' ];
+
+					const fontBody = getFontName(
+						font[ 'body-font-family' ]
+					).replaceAll( ' ', '+' );
+					const fontBodyWeight = font[ 'body-font-weight' ];
+
+					otherFontsString += `&family=${ fontHeading }:wght@${ fontHeadingWeight }&family=${ fontBody }:wght@${ fontBodyWeight }`;
+				}
+				otherFontsString = otherFontsString.replace( /[&]{1}$/i, '' );
+			}
+
+			// Add Google fonts URL.
+			if ( fontsName ) {
+				const fontUrl = `https://fonts.googleapis.com/css2?${ fontsName.join(
+					'&'
+				) }${ otherFontsString }&display=swap`;
+
+				node.setAttribute( 'href', fontUrl );
+				document.head.insertAdjacentElement( 'afterbegin', node );
+			}
+			// Add default font.
+			const allFonts = defaultFonts.concat( fonts );
+			// if ( Object.keys( typography ).length === 0 ) {
+			dispatch( {
+				type: 'set',
+				typography: allFonts[ 0 ],
+			} );
+			// }
+
+			setFonts( allFonts );
+		}
+	}, [ templateResponse ] );
+
+	const sendPostMessage = ( data ) => {
+		dispatchPostMessage( data, 'astra-starter-templates-preview' );
 	};
 
-	const nextStep = () => {
-		customizeWebsite();
-	};
+	const handleChange = ( selectedTypography ) => () => {
+		const newTypography = headingFonts
+			? { ...selectedTypography, ...headingFonts }
+			: selectedTypography;
 
-	const lastStep = () => {
+		sendPostMessage( {
+			param: 'siteTypography',
+			data: JSON.parse( JSON.stringify( newTypography ) ),
+		} );
+
 		dispatch( {
 			type: 'set',
-			currentCustomizeIndex: currentCustomizeIndex - 1,
+			typography: selectedTypography,
 		} );
 	};
 
-	const resetTypography = ( event ) => {
-		onSelect( event, defaultFonts[ 0 ].id );
+	const handleReset = () => {
+		const defaultTypography = fonts[ 0 ];
+		sendPostMessage( {
+			param: 'siteTypography',
+			data: JSON.parse( JSON.stringify( defaultTypography ) ),
+		} );
+		dispatch( {
+			type: 'set',
+			typography: defaultTypography,
+		} );
 	};
 
+	const selectedHeadingFont =
+			getFontName( activeTypography?.[ 'headings-font-family' ] ) || '',
+		selectedBodyFont =
+			getFontName( activeTypography?.[ 'body-font-family' ] ) || '';
 	return (
-		<>
-			<div className="d-flex-space-between">
-				<h4 className="ist-default-fonts-heading">
-					{ __( 'Change Fonts', 'astra-sites' ) }
-				</h4>
-				<div
-					className={ `customize-reset-btn ${
-						typographyIndex === 0 ? 'disabled' : 'active'
-					}` }
-					onClick={ resetTypography }
+		<div className="space-y-2">
+			<div className="flex items-center justify-between">
+				<p className="text-zip-app-heading text-sm w-full truncate">
+					<span className="font-semibold">
+						{ __( 'Font Pair', 'astra-sites' ) }:
+					</span>
+					<span className="font-normal">
+						{ ' ' }
+						{ selectedHeadingFont } & { selectedBodyFont }{ ' ' }
+					</span>
+				</p>
+				<button
+					key="reset-to-default-fonts"
+					className={ classNames(
+						'inline-flex p-px items-center justify-center text-button-disabled border-0 bg-transparent focus:outline-none transition-colors duration-200 ease-in-out cursor-default',
+						! activeTypography?.default &&
+							'text-zip-app-inactive-icon cursor-pointer'
+					) }
+					{ ...( ! activeTypography?.default && {
+						onClick: handleReset,
+					} ) }
 				>
-					{ ICONS.reset }
-				</div>
+					<ArrowPathIcon
+						className="w-[0.875rem] h-[0.875rem]"
+						strokeWidth={ 2 }
+					/>
+				</button>
 			</div>
-			<List
-				className="ist-default-fonts"
-				options={ defaultFonts }
-				onSelect={ onSelect }
-				selected={ selected }
-				type="default"
-			/>
-			<List
-				className="ist-other-fonts"
-				options={ otherFonts }
-				onSelect={ onSelect }
-				selected={ selected }
-				type="other"
-			/>
-
-			<Button className="ist-button" onClick={ nextStep } after={ true }>
-				{ isSaving ? (
-					<LoadingSpinner />
-				) : (
-					__( 'Save Customizations', 'astra-sites' )
-				) }
-			</Button>
-			<div className="mb-[60px]">
-				<PreviousStepLink customizeStep={ true } onClick={ lastStep }>
-					{ __( 'Back', 'astra-sites' ) }
-				</PreviousStepLink>
+			<div className="grid grid-cols-5 gap-3 auto-rows-[36px]">
+				{ fonts.map( ( font ) => {
+					const bodyFont =
+						getFontName( font[ 'body-font-family' ] ) || '';
+					const headingFont =
+						getFontName(
+							font[ 'headings-font-family' ],
+							bodyFont
+						) || '';
+					return (
+						<div
+							key={ font.id }
+							className={ classNames(
+								'flex justify-center items-center text-body-text font-normal px-2 py-1 border border-solid border-button-disabled rounded-md bg-st-background-secondary hover:bg-white transition duration-150 ease-in-out cursor-pointer w-full h-9',
+								activeTypography?.id === font.id &&
+									'outline-1 outline outline-offset-2 outline-accent-st-secondary bg-white'
+							) }
+							onClick={ handleChange( font ) }
+						>
+							<span
+								className="truncate text-xl font-normal"
+								style={ {
+									fontFamily: headingFont,
+								} }
+							>
+								A
+							</span>
+							<span
+								className="truncate text-sm font-normal"
+								style={ {
+									fontFamily: bodyFont,
+								} }
+							>
+								g
+							</span>
+						</div>
+					);
+				} ) }
 			</div>
-		</>
+		</div>
 	);
 };
 
-export default FontSelector;
+export default memo( FontSelector );
